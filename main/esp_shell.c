@@ -234,7 +234,7 @@ static bool list_at(const char *cwd, const char *path, char *result, size_t resu
     result[0] = '\0';
     struct dirent *entry;
     while ((entry = readdir(dir)) != NULL) {
-        char child[PATH_MAX_LOCAL + 32];
+        char child[(PATH_MAX_LOCAL * 2) + 32];
         struct stat child_st;
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
             continue;
@@ -446,7 +446,7 @@ bool esp_shell_execute(const char *command, char *cwd, size_t cwd_len,
     strcpy(line, command);
     argc = split_args(line, argv, MAX_ARGS);
     if (argc == 0) {
-        snprintf(result, result_len, "");
+        result[0] = '\0';
         return true;
     }
 
