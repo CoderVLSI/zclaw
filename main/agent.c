@@ -415,7 +415,7 @@ static void handle_start_command(int64_t chat_id)
 
 static void handle_settings_command(int64_t chat_id)
 {
-    char settings_text[384];
+    char settings_text[512];
     snprintf(settings_text, sizeof(settings_text),
              "zclaw settings:\n"
              "- Message intake: %s\n"
