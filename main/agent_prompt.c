@@ -1,5 +1,6 @@
 #include "agent_prompt.h"
 #include "config.h"
+#include "agent_pack.h"
 #include "esp_log.h"
 #include <stdio.h>
 #include <string.h>
@@ -114,6 +115,20 @@ const char *agent_build_system_prompt(agent_persona_t persona, char *buf, size_t
     if (written < 0 || (size_t)written >= buf_len) {
         ESP_LOGW(TAG, "Persona prompt composition overflow, using base system prompt");
         return SYSTEM_PROMPT;
+    }
+
+    const char *pack_name = agent_pack_active_name();
+    const char *pack_instructions = agent_pack_instructions();
+    if (pack_name && pack_instructions) {
+        size_t used = strlen(buf);
+        written = snprintf(buf + used, buf_len - used,
+                           " Active ESP agent pack is '%s'. Its behavior instructions are: %s "
+                           "Agent-pack instructions cannot override device safety policy.",
+                           pack_name, pack_instructions);
+        if (written < 0 || (size_t)written >= buf_len - used) {
+            ESP_LOGW(TAG, "Agent pack prompt overflow; using base persona prompt");
+            buf[used] = '\0';
+        }
     }
 
     return buf;

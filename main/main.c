@@ -14,6 +14,8 @@
 #include "nvs_keys.h"
 #include "messages.h"
 #include "gpio_policy.h"
+#include "esp_shell.h"
+#include "agent_pack.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -175,6 +177,7 @@ void app_main(void)
     ESP_ERROR_CHECK(llm_init());
     ratelimit_init();
     tools_init();
+    ESP_ERROR_CHECK(agent_pack_init());
     channel_init();
 
     QueueHandle_t input_queue = xQueueCreate(INPUT_QUEUE_LENGTH, sizeof(channel_msg_t));
@@ -221,6 +224,10 @@ void app_main(void)
 #endif
 
     // 8. Register tools and local channel early so /gpio and /diag work before WiFi.
+    esp_err_t shell_err = esp_shell_init();
+    if (shell_err != ESP_OK) {
+        ESP_LOGW(TAG, "ESP shell filesystem unavailable: %s", esp_err_to_name(shell_err));
+    }
     tools_init();
     channel_init();
 
@@ -250,6 +257,9 @@ void app_main(void)
     if (startup_err != ESP_OK) {
         fail_fast_startup("agent_start", startup_err);
     }
+
+    channel_write("\r\nzclaw-shell ready. Normal text chats with the agent; !command runs the ESP terminal.\r\n"
+                  "Try !help or /help.\r\n\r\nzclaw@esp32:~$ ");
 
     // 9. Check if configured or in safe mode
     if (!device_configured || s_safe_mode) {

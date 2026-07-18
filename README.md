@@ -1,5 +1,32 @@
 # zclaw
 
+> This fork adds **zclaw-shell** for classic ESP32-WROOM: a persistent on-device
+> filesystem, a Linux-style serial prompt, safe shell commands, agent-accessible
+> filesystem/shell tools, and installable declarative agent packs.
+
+At the `zclaw@esp32:~$` prompt, normal text chats with zclaw. Prefix a local
+command with `!`:
+
+```text
+!help
+!ls
+!cat README.txt
+!write notes.txt "hello from ESP32"
+!df
+```
+
+Install an ESP-native agent pack over HTTPS:
+
+```text
+!claw install https://raw.githubusercontent.com/CoderVLSI/zclaw/refs/heads/codex/zclaw-shell/agent-packs/technical-shell.json
+!claw status
+!claw list
+```
+
+Agent packs are validated JSON instructions stored on the ESP data partition.
+They are not arbitrary host shell scripts or Linux binaries. Native drivers and
+firmware components still require a rebuild and OTA/serial flash.
+
 <img
   src="docs/images/lobster_xiao_cropped_left.png"
   alt="Lobster soldering a Seeed Studio XIAO ESP32-C3"

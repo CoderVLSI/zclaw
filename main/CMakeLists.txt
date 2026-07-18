@@ -19,6 +19,9 @@ idf_component_register(
         "tools_persona.c"
         "tools_cron.c"
         "tools_system.c"
+        "tools_shell.c"
+        "esp_shell.c"
+        "agent_pack.c"
         "memory.c"
         "json_util.c"
         "telegram.c"
@@ -51,6 +54,8 @@ idf_component_register(
         lwip
         esp_driver_usb_serial_jtag
         app_update
+        fatfs
+        wear_levelling
 )
 
 set(ZCLAW_RELEASE_VERSION "dev")

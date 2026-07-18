@@ -117,6 +117,28 @@ TOOL_ENTRY("get_diagnostics",
            "{\"type\":\"object\",\"properties\":{\"scope\":{\"type\":\"string\",\"enum\":[\"quick\",\"runtime\",\"memory\",\"rates\",\"time\",\"all\"]},\"verbose\":{\"type\":\"boolean\"}}}",
            tools_get_diagnostics_handler)
 
+// ESP shell and persistent filesystem
+TOOL_ENTRY("shell_exec",
+           "Run one safe, non-interactive command in the ESP's own shell. This is not a host or Linux shell.",
+           "{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\"},\"cwd\":{\"type\":\"string\"}},\"required\":[\"command\"]}",
+           tools_shell_exec_handler)
+TOOL_ENTRY("filesystem_list",
+           "List a directory in the ESP's persistent filesystem.",
+           "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}}}",
+           tools_filesystem_list_handler)
+TOOL_ENTRY("filesystem_read",
+           "Read a text file from the ESP's persistent filesystem.",
+           "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"]}",
+           tools_filesystem_read_handler)
+TOOL_ENTRY("filesystem_write",
+           "Write or append text to a file in the ESP's persistent filesystem.",
+           "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"},\"append\":{\"type\":\"boolean\"}},\"required\":[\"path\",\"content\"]}",
+           tools_filesystem_write_handler)
+TOOL_ENTRY("filesystem_remove",
+           "Remove one file or one empty directory from the ESP's persistent filesystem.",
+           "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"]}",
+           tools_filesystem_remove_handler)
+
 // User Tool Management
 TOOL_ENTRY("create_tool",
            "Create a user tool.",

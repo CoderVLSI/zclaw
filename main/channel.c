@@ -25,6 +25,7 @@ static const char *TAG = "channel";
 
 static QueueHandle_t s_input_queue;
 static QueueHandle_t s_output_queue;
+static const char *SHELL_PROMPT = "zclaw@esp32:~$ ";
 
 #define LLM_BRIDGE_REQ_PREFIX  "__zclaw_llm_req__:"
 #define LLM_BRIDGE_RESP_PREFIX "__zclaw_llm_resp__:"
@@ -301,6 +302,8 @@ static void channel_write_task(void *arg)
             const char *text = msg.text;
             channel_write_normalized_text(text, portMAX_DELAY);
             channel_io_write_bytes((const uint8_t *)"\r\n\r\n", 4, portMAX_DELAY);
+            channel_io_write_bytes((const uint8_t *)SHELL_PROMPT,
+                                   strlen(SHELL_PROMPT), portMAX_DELAY);
         }
     }
 }

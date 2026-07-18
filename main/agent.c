@@ -8,6 +8,7 @@
 #include "user_tools.h"
 #include "json_util.h"
 #include "messages.h"
+#include "esp_shell.h"
 #include "ratelimit.h"
 #include "memory.h"
 #include "nvs_keys.h"
@@ -36,6 +37,7 @@ static bool s_messages_paused = false;
 static char s_system_prompt_buf[2048];
 
 static agent_persona_t s_persona = AGENT_PERSONA_NEUTRAL;
+static char s_local_shell_cwd[ESP_SHELL_CWD_MAX] = ESP_SHELL_HOME;
 
 #ifdef TEST_BUILD
 static char s_test_persona_value[16] = {0};
@@ -303,7 +305,40 @@ static bool is_local_admin_command(const char *user_message)
 {
     return agent_is_command(user_message, "gpio") ||
            agent_is_command(user_message, "diag") ||
+           agent_is_command(user_message, "shell") ||
+           (user_message && user_message[0] == '!') ||
            local_admin_is_command(user_message);
+}
+
+static void handle_shell_command(const char *user_message,
+                                 int64_t chat_id,
+                                 request_metrics_t *metrics)
+{
+    const char *command = NULL;
+    char response[CHANNEL_TX_BUF_SIZE];
+    bool ok;
+    int64_t started_us;
+
+    if (user_message && user_message[0] == '!') {
+        command = user_message + 1;
+        while (*command == ' ' || *command == '\t') command++;
+    } else {
+        command = agent_command_payload(user_message, "shell");
+    }
+
+    if (!command || command[0] == '\0') {
+        send_response("ESP shell inside zclaw. Use !COMMAND or /shell COMMAND. Example: !ls", chat_id);
+        metrics_log_request(metrics, "shell_help");
+        return;
+    }
+
+    started_us = esp_timer_get_time();
+    ok = esp_shell_execute(command, s_local_shell_cwd, sizeof(s_local_shell_cwd), true,
+                           response, sizeof(response));
+    metrics->tool_us_total += elapsed_us_since(started_us);
+    metrics->tool_calls++;
+    send_response(response[0] ? response : (ok ? "OK" : "Error"), chat_id);
+    metrics_log_request(metrics, ok ? "shell_handled" : "shell_failed");
 }
 
 static void handle_local_admin_command(const char *user_message,
@@ -327,6 +362,12 @@ static void handle_local_admin_command(const char *user_message,
 
     if (agent_is_command(user_message, "gpio")) {
         handle_gpio_command(user_message, chat_id, metrics);
+        return;
+    }
+
+    if (agent_is_command(user_message, "shell") ||
+        (user_message && user_message[0] == '!')) {
+        handle_shell_command(user_message, chat_id, metrics);
         return;
     }
 
@@ -364,6 +405,7 @@ static void handle_start_command(int64_t chat_id)
         "USB local admin commands:\n"
         "- /gpio [all|pin|pin high|pin low]\n"
         "- /diag [scope] [verbose]\n"
+        "- /shell COMMAND (or !COMMAND)\n"
         "- /reboot\n"
         "- /wifi [status|scan]\n"
         "- /bootcount\n"
@@ -380,6 +422,7 @@ static void handle_settings_command(int64_t chat_id)
              "- Persona: %s\n"
              "- Chat commands: /start, /help, /settings, /stop, /resume\n"
              "- USB local admin: /gpio, /diag, /reboot, /wifi, /bootcount, /factory-reset\n"
+             "- ESP shell: /shell COMMAND or !COMMAND\n"
              "- /gpio supports reads and writes (e.g. /gpio 9 low)\n"
              "- Persona changes: ask in normal chat (handled via tool calls)\n"
              "- Device settings are global (e.g., timezone <name>)",
@@ -735,6 +778,7 @@ void agent_test_reset(void)
     s_history_len = 0;
     memset(s_response_buf, 0, sizeof(s_response_buf));
     memset(s_tool_result_buf, 0, sizeof(s_tool_result_buf));
+    snprintf(s_local_shell_cwd, sizeof(s_local_shell_cwd), "%s", ESP_SHELL_HOME);
     s_channel_output_queue = NULL;
     s_telegram_output_queue = NULL;
     s_last_start_response_us = 0;
