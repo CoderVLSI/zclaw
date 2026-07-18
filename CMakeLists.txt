@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 
+# Bare-metal cross-compilers cannot link CMake's default host-style probe.
+set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+
 set(ZCLAW_VERSION_FILE "${CMAKE_SOURCE_DIR}/VERSION")
 set(PROJECT_VER "dev")
 if(EXISTS "${ZCLAW_VERSION_FILE}")
