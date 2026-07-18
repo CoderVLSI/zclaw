@@ -4,6 +4,7 @@ build-qemu/
 build-secure/
 /build-*/
 /build.*/
+/.local-build/
 sdkconfig
 sdkconfig.qemu
 sdkconfig.old

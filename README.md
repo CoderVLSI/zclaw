@@ -138,6 +138,25 @@ Profile setup once, then re-use:
 
 More details in the [Local Dev & Hacking guide](https://zclaw.dev/local-dev.html).
 
+### Windows builds without terminal popups
+
+On Windows, native ESP-IDF compiler children can open a new Windows Terminal
+when their parent has no console. `scripts/quiet_build.py` runs the complete
+PlatformIO process tree inside a headless ConPTY session and redirects build
+output to `.local-build/build.log`.
+
+The launcher expects a workspace virtual environment at
+`..\.venv_runtime` and defaults to a no-space build clone at
+`%USERPROFILE%\zclaw-shell-build`. It refuses to build when that clone is on a
+different Git commit.
+
+```powershell
+& ..\.venv_runtime\Scripts\python.exe .\scripts\quiet_build.py --self-test
+& ..\.venv_runtime\Scripts\python.exe .\scripts\quiet_build.py --start
+& ..\.venv_runtime\Scripts\python.exe .\scripts\quiet_build.py --status
+& ..\.venv_runtime\Scripts\python.exe .\scripts\quiet_build.py --stop
+```
+
 ### Other Useful Scripts
 
 <details>
