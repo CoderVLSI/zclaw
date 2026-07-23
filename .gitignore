@@ -5,6 +5,7 @@ build-secure/
 /build-*/
 /build.*/
 /.local-build/
+/.pio/
 sdkconfig
 sdkconfig.qemu
 sdkconfig.old
