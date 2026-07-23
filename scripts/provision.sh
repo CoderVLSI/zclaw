@@ -29,9 +29,9 @@ Options:
   --port <serial-port>      Serial port (auto-detect if omitted)
   --ssid <wifi-ssid>        WiFi SSID (auto-detected when possible)
   --pass <wifi-pass>        WiFi password (optional)
-  --backend <provider>      anthropic | openai | openrouter | ollama
+  --backend <provider>      anthropic | openai | gemini | openrouter | ollama
   --model <model-id>        Model ID (defaults by backend)
-  --api-key <key>           LLM API key (required for anthropic/openai/openrouter)
+  --api-key <key>           LLM API key (required except for keyless Ollama)
   --api-url <url>           Optional custom API endpoint URL
   --tg-token <token>        Telegram bot token (optional)
   --tg-chat-id <id[,id...]> Telegram chat ID allowlist (optional)
@@ -348,11 +348,12 @@ source_idf_env() {
 
 default_model_for_backend() {
     case "$1" in
-        anthropic) echo "claude-sonnet-4-6" ;;
-        openai) echo "gpt-5.4" ;;
+        anthropic) echo "claude-sonnet-5" ;;
+        openai) echo "gpt-5.6-sol" ;;
+        gemini) echo "gemini-3.6-flash" ;;
         openrouter) echo "openrouter/auto" ;;
         ollama) echo "qwen3:8b" ;;
-        *) echo "claude-sonnet-4-6" ;;
+        *) echo "gpt-5.6-sol" ;;
     esac
 }
 
@@ -365,12 +366,16 @@ load_model_menu_for_backend() {
 
     case "$1" in
         anthropic)
-            MODEL_MENU_LABELS=("claude-sonnet-4-6 (default)" "claude-haiku-4-5" "claude-opus-4-6" "Other model ID")
-            MODEL_MENU_VALUES=("claude-sonnet-4-6" "claude-haiku-4-5" "claude-opus-4-6" "__custom__")
+            MODEL_MENU_LABELS=("claude-sonnet-5 (default)" "claude-fable-5" "claude-opus-4-8" "claude-haiku-4-5" "Other model ID")
+            MODEL_MENU_VALUES=("claude-sonnet-5" "claude-fable-5" "claude-opus-4-8" "claude-haiku-4-5" "__custom__")
             ;;
         openai)
-            MODEL_MENU_LABELS=("gpt-5.4 (default)" "gpt-5-mini" "gpt-4.1-mini" "Other model ID")
-            MODEL_MENU_VALUES=("gpt-5.4" "gpt-5-mini" "gpt-4.1-mini" "__custom__")
+            MODEL_MENU_LABELS=("gpt-5.6-sol (default)" "gpt-5.6-terra" "gpt-5.6-luna" "gpt-5.4-mini" "Other model ID")
+            MODEL_MENU_VALUES=("gpt-5.6-sol" "gpt-5.6-terra" "gpt-5.6-luna" "gpt-5.4-mini" "__custom__")
+            ;;
+        gemini)
+            MODEL_MENU_LABELS=("gemini-3.6-flash (default)" "gemini-3.5-flash" "gemini-3.5-flash-lite" "gemini-3.1-pro-preview" "gemini-2.5-pro" "Other model ID")
+            MODEL_MENU_VALUES=("gemini-3.6-flash" "gemini-3.5-flash" "gemini-3.5-flash-lite" "gemini-3.1-pro-preview" "gemini-2.5-pro" "__custom__")
             ;;
         openrouter)
             MODEL_MENU_LABELS=("openrouter/auto (default)" "openai/gpt-5.2" "openai/gpt-5-mini" "anthropic/claude-sonnet-4.6" "anthropic/claude-haiku-4.5" "Other model ID")
@@ -429,7 +434,7 @@ prompt_for_model() {
 
 validate_backend() {
     case "$1" in
-        anthropic|openai|openrouter|ollama) return 0 ;;
+        anthropic|openai|gemini|openrouter|ollama) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -646,11 +651,12 @@ verify_openai_api_key() {
     local _model="$2"
     local api_url_override="$3"
     local api_url="${api_url_override:-${OPENAI_API_URL:-https://api.openai.com/v1/models}}"
+    local provider_label="${4:-OpenAI}"
     local response_file
     local http_code
 
     if ! command -v curl >/dev/null 2>&1; then
-        echo "Warning: curl not found; skipping OpenAI API check."
+        echo "Warning: curl not found; skipping ${provider_label} API check."
         return 2
     fi
 
@@ -662,17 +668,17 @@ verify_openai_api_key() {
         -H "authorization: Bearer $api_key" \
         "$api_url")"; then
         rm -f "$response_file"
-        echo "OpenAI API check failed: network/transport error."
+        echo "${provider_label} API check failed: network/transport error."
         return 1
     fi
 
     if [ "$http_code" = "200" ]; then
         rm -f "$response_file"
-        echo "OpenAI API check passed (models endpoint reachable)."
+        echo "${provider_label} API check passed (models endpoint reachable)."
         return 0
     fi
 
-    echo "OpenAI API check failed (HTTP $http_code)."
+    echo "${provider_label} API check failed (HTTP $http_code)."
     if command -v python3 >/dev/null 2>&1; then
         python3 - "$response_file" <<'PY'
 import json
@@ -701,6 +707,14 @@ PY
 
     rm -f "$response_file"
     return 1
+}
+
+verify_gemini_api_key() {
+    local api_key="$1"
+    local model="$2"
+    local api_url_override="$3"
+    local api_url="${api_url_override:-${GEMINI_API_URL:-https://generativelanguage.googleapis.com/v1beta/openai/models}}"
+    verify_openai_api_key "$api_key" "$model" "$api_url" "Gemini"
 }
 
 verify_openrouter_api_key() {
@@ -1010,13 +1024,13 @@ if [ -z "$BACKEND" ]; then
     if [ "$ASSUME_YES" = true ]; then
         BACKEND="openai"
     else
-        read -r -p "LLM provider [openai/anthropic/openrouter/ollama] (default: openai): " BACKEND
+        read -r -p "LLM provider [openai/anthropic/gemini/openrouter/ollama] (default: openai): " BACKEND
         BACKEND="${BACKEND:-openai}"
     fi
 fi
 
 if ! validate_backend "$BACKEND"; then
-    echo "Error: invalid backend '$BACKEND' (expected anthropic|openai|openrouter|ollama)"
+    echo "Error: invalid backend '$BACKEND' (expected anthropic|openai|gemini|openrouter|ollama)"
     exit 1
 fi
 
@@ -1068,6 +1082,10 @@ if [ "$VERIFY_API_KEY" = true ]; then
         openai)
             VERIFY_LABEL="OpenAI"
             VERIFY_FN="verify_openai_api_key"
+            ;;
+        gemini)
+            VERIFY_LABEL="Gemini"
+            VERIFY_FN="verify_gemini_api_key"
             ;;
         openrouter)
             VERIFY_LABEL="OpenRouter"

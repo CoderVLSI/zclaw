@@ -22,7 +22,7 @@ def valid_payload() -> dict[str, str]:
         "wifi_ssid": "Test Network",
         "wifi_password": "not-a-real-password",
         "backend": "openai",
-        "model": "gpt-5.4",
+        "model": "gpt-5.6-sol",
         "api_key": "sk-test-not-real",
         "api_url": "",
         "telegram_token": "123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcd",
@@ -54,6 +54,18 @@ class DashboardValidationTests(unittest.TestCase):
         )
         config = dashboard.validate_provision_payload(payload)
         self.assertEqual(config.api_url, "http://192.168.1.50:11434")
+
+    def test_gemini_is_supported_with_api_key(self) -> None:
+        payload = valid_payload()
+        payload.update(
+            backend="gemini",
+            model="gemini-3.6-flash",
+            api_key="google-test-key",
+        )
+        config = dashboard.validate_provision_payload(payload)
+        self.assertEqual(config.backend, "gemini")
+        self.assertEqual(config.model, "gemini-3.6-flash")
+        self.assertIn("gemini-3.6-flash", dashboard.MODEL_CATALOG["gemini"])
 
     def test_telegram_token_and_ids_are_paired(self) -> None:
         payload = valid_payload()

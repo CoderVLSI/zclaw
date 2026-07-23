@@ -72,6 +72,17 @@ TEST(loads_openrouter_backend_and_custom_model)
     return 0;
 }
 
+TEST(loads_gemini_backend_and_default_model)
+{
+    configure_mock_store("gemini", NULL, "test-key", NULL);
+    ASSERT(llm_init() == ESP_OK);
+    ASSERT(llm_get_backend() == LLM_BACKEND_GEMINI);
+    ASSERT(strcmp(llm_get_api_url(), LLM_API_URL_GEMINI) == 0);
+    ASSERT(strcmp(llm_get_model(), LLM_DEFAULT_MODEL_GEMINI) == 0);
+    ASSERT(llm_is_openai_format());
+    return 0;
+}
+
 TEST(unknown_backend_falls_back_to_openai)
 {
     configure_mock_store("mystery_backend", NULL, "test-key", NULL);
@@ -159,6 +170,13 @@ int test_llm_runtime_all(void)
 
     printf("  loads_openrouter_backend_and_custom_model... ");
     if (test_loads_openrouter_backend_and_custom_model() == 0) {
+        printf("OK\n");
+    } else {
+        failures++;
+    }
+
+    printf("  loads_gemini_backend_and_default_model... ");
+    if (test_loads_gemini_backend_and_default_model() == 0) {
         printf("OK\n");
     } else {
         failures++;

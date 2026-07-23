@@ -36,10 +36,54 @@ PROJECT_DIR = Path(__file__).resolve().parents[1]
 MAX_BODY_BYTES = 64 * 1024
 MAX_SERIAL_MESSAGE = 4096
 DEFAULT_MODELS = {
-    "openai": "gpt-5.4",
-    "anthropic": "claude-sonnet-4-6",
+    "openai": "gpt-5.6-sol",
+    "anthropic": "claude-sonnet-5",
+    "gemini": "gemini-3.6-flash",
     "openrouter": "openrouter/auto",
     "ollama": "qwen3:8b",
+}
+MODEL_CATALOG = {
+    "openai": [
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
+        "gpt-5.6",
+        "gpt-5.5",
+        "gpt-5.4",
+        "gpt-5.4-mini",
+    ],
+    "anthropic": [
+        "claude-fable-5",
+        "claude-opus-4-8",
+        "claude-sonnet-5",
+        "claude-haiku-4-5",
+        "claude-sonnet-4-6",
+    ],
+    "gemini": [
+        "gemini-3.6-flash",
+        "gemini-3.5-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-3.1-pro-preview",
+        "gemini-3.1-flash-lite",
+        "gemini-3-flash-preview",
+        "gemini-flash-latest",
+        "gemini-2.5-pro",
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+    ],
+    "openrouter": [
+        "openrouter/auto",
+        "~openai/gpt-latest",
+        "openai/gpt-5.6-sol",
+        "google/gemini-3.6-flash",
+        "anthropic/claude-sonnet-5",
+    ],
+    "ollama": [
+        "qwen3:8b",
+        "qwen3:4b",
+        "llama3.2:3b",
+        "gemma3:4b",
+    ],
 }
 TOKEN_RE = re.compile(r"^\d{6,20}:[A-Za-z0-9_-]{20,}$")
 CHAT_ID_RE = re.compile(r"^-?\d{1,20}$")
@@ -346,6 +390,7 @@ def make_handler(state: DashboardState):
                         "ports": ports,
                         "default_port": default_port,
                         "providers": DEFAULT_MODELS,
+                        "model_catalog": MODEL_CATALOG,
                     },
                 )
                 return
@@ -649,20 +694,22 @@ DASHBOARD_HTML = r"""<!doctype html>
 
           <section class="card">
             <h2>2 · Language model</h2>
-            <p class="desc">Use OpenAI, Anthropic, OpenRouter, or a local Ollama server reachable from the ESP32 network.</p>
+            <p class="desc">Use OpenAI, Anthropic, Google Gemini, OpenRouter, or a local Ollama server reachable from the ESP32 network.</p>
             <div class="fields">
               <label>Provider<select id="backend" name="backend">
                 <option value="openai">OpenAI</option>
                 <option value="anthropic">Anthropic</option>
+                <option value="gemini">Google Gemini</option>
                 <option value="openrouter">OpenRouter</option>
                 <option value="ollama">Ollama (local)</option>
               </select></label>
-              <label>Model<input id="model" name="model" value="gpt-5.4" required></label>
+              <label>Model<input id="model" name="model" value="gpt-5.6-sol" list="model-options" required><datalist id="model-options"></datalist></label>
               <label id="apiKeyLabel" class="full">API key
                 <span class="secret"><input name="api_key" type="password" placeholder="Entered locally; never saved by dashboard"><button class="reveal" type="button">Show</button></span>
               </label>
               <label id="apiUrlLabel" class="full hidden">Ollama URL<input name="api_url" placeholder="http://192.168.1.50:11434"></label>
             </div>
+            <p class="hint">Current chat and agent model suggestions verified through 23 July 2026. You can still type a custom model ID.</p>
           </section>
 
           <section class="card">
@@ -733,12 +780,20 @@ DASHBOARD_HTML = r"""<!doctype html>
   </div>
 
   <script>
-    const defaults = {openai:"gpt-5.4", anthropic:"claude-sonnet-4-6", openrouter:"openrouter/auto", ollama:"qwen3:8b"};
+    const defaults = {openai:"gpt-5.6-sol", anthropic:"claude-sonnet-5", gemini:"gemini-3.6-flash", openrouter:"openrouter/auto", ollama:"qwen3:8b"};
+    const modelCatalog = {
+      openai:["gpt-5.6-sol","gpt-5.6-terra","gpt-5.6-luna","gpt-5.6","gpt-5.5","gpt-5.4","gpt-5.4-mini"],
+      anthropic:["claude-fable-5","claude-opus-4-8","claude-sonnet-5","claude-haiku-4-5","claude-sonnet-4-6"],
+      gemini:["gemini-3.6-flash","gemini-3.5-flash","gemini-3.5-flash-lite","gemini-3.1-pro-preview","gemini-3.1-flash-lite","gemini-3-flash-preview","gemini-flash-latest","gemini-2.5-pro","gemini-2.5-flash","gemini-2.5-flash-lite"],
+      openrouter:["openrouter/auto","~openai/gpt-latest","openai/gpt-5.6-sol","google/gemini-3.6-flash","anthropic/claude-sonnet-5"],
+      ollama:["qwen3:8b","qwen3:4b","llama3.2:3b","gemma3:4b"]
+    };
     const $ = (selector) => document.querySelector(selector);
     const form = $("#provisionForm");
     const port = $("#port");
     const backend = $("#backend");
     const model = $("#model");
+    const modelOptions = $("#model-options");
     const setupLog = $("#setupLog");
     const consoleLog = $("#consoleLog");
     const badge = $("#connectionBadge");
@@ -753,11 +808,22 @@ DASHBOARD_HTML = r"""<!doctype html>
       badge.classList.toggle("bad", !ok);
       connectionText.textContent = text;
     }
+    function refreshModelOptions() {
+      modelOptions.replaceChildren();
+      for (const id of modelCatalog[backend.value] || []) {
+        const option = document.createElement("option");
+        option.value = id;
+        modelOptions.appendChild(option);
+      }
+    }
     async function refreshPorts() {
       setConnection(false, "Checking USB");
       try {
         const res = await fetch("/api/status", {cache:"no-store"});
         const data = await res.json();
+        Object.assign(defaults, data.providers || {});
+        Object.assign(modelCatalog, data.model_catalog || {});
+        refreshModelOptions();
         port.replaceChildren();
         for (const item of data.ports) {
           const option = document.createElement("option");
@@ -783,12 +849,14 @@ DASHBOARD_HTML = r"""<!doctype html>
     }
     backend.addEventListener("change", () => {
       model.value = defaults[backend.value];
+      refreshModelOptions();
       const ollama = backend.value === "ollama";
       $("#apiKeyLabel").classList.toggle("hidden", ollama);
       $("#apiUrlLabel").classList.toggle("hidden", !ollama);
       if (ollama) form.elements.api_key.value = "";
       else form.elements.api_url.value = "";
     });
+    refreshModelOptions();
     document.querySelectorAll(".reveal").forEach((button) => {
       button.addEventListener("click", () => {
         const input = button.parentElement.querySelector("input");

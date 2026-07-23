@@ -48,6 +48,8 @@ static const char *llm_backend_name(llm_backend_t backend)
             return "OpenRouter";
         case LLM_BACKEND_OLLAMA:
             return "Ollama";
+        case LLM_BACKEND_GEMINI:
+            return "Gemini";
         default:
             return "Unknown";
     }
@@ -457,6 +459,8 @@ esp_err_t llm_init(void)
             s_backend = LLM_BACKEND_OPENROUTER;
         } else if (strcmp(backend_str, "ollama") == 0) {
             s_backend = LLM_BACKEND_OLLAMA;
+        } else if (strcmp(backend_str, "gemini") == 0) {
+            s_backend = LLM_BACKEND_GEMINI;
         } else {
             ESP_LOGW(TAG, "Unknown llm_backend '%s', defaulting to OpenAI", backend_str);
             s_backend = LLM_BACKEND_OPENAI;
@@ -537,10 +541,14 @@ const char *llm_get_api_url(void)
             return LLM_API_URL_OPENAI;
         case LLM_BACKEND_OPENROUTER:
             return LLM_API_URL_OPENROUTER;
+        case LLM_BACKEND_GEMINI:
+            return LLM_API_URL_GEMINI;
         case LLM_BACKEND_OLLAMA:
             return LLM_API_URL_OLLAMA;
-        default:
+        case LLM_BACKEND_ANTHROPIC:
             return LLM_API_URL_ANTHROPIC;
+        default:
+            return LLM_API_URL_OPENAI;
     }
 }
 
@@ -551,10 +559,14 @@ const char *llm_get_default_model(void)
             return LLM_DEFAULT_MODEL_OPENAI;
         case LLM_BACKEND_OPENROUTER:
             return LLM_DEFAULT_MODEL_OPENROUTER;
+        case LLM_BACKEND_GEMINI:
+            return LLM_DEFAULT_MODEL_GEMINI;
         case LLM_BACKEND_OLLAMA:
             return LLM_DEFAULT_MODEL_OLLAMA;
-        default:
+        case LLM_BACKEND_ANTHROPIC:
             return LLM_DEFAULT_MODEL_ANTHROPIC;
+        default:
+            return LLM_DEFAULT_MODEL_OPENAI;
     }
 }
 
@@ -574,6 +586,7 @@ bool llm_is_openai_format(void)
 {
     return s_backend == LLM_BACKEND_OPENAI ||
            s_backend == LLM_BACKEND_OPENROUTER ||
+           s_backend == LLM_BACKEND_GEMINI ||
            s_backend == LLM_BACKEND_OLLAMA;
 }
 
@@ -706,9 +719,10 @@ esp_err_t llm_request(const char *request_json, char *response_buf, size_t respo
         esp_http_client_set_header(client, "x-api-key", s_api_key);
         esp_http_client_set_header(client, "anthropic-version", "2023-06-01");
     } else if (s_backend == LLM_BACKEND_OPENAI || s_backend == LLM_BACKEND_OPENROUTER ||
+               s_backend == LLM_BACKEND_GEMINI ||
                (s_backend == LLM_BACKEND_OLLAMA && s_api_key[0] != '\0')) {
-        // OpenAI/OpenRouter use Bearer token. For Ollama, Bearer is optional and only sent
-        // when a key is explicitly provided (e.g. reverse proxy auth).
+        // OpenAI/OpenRouter/Gemini use Bearer tokens. For Ollama, Bearer is
+        // optional and only sent when a key is explicitly provided.
         char auth_header[LLM_AUTH_HEADER_BUF_SIZE];
         if (!llm_build_bearer_auth_header(s_api_key, auth_header, sizeof(auth_header))) {
             ESP_LOGE(TAG, "API key length exceeds supported authorization header capacity");

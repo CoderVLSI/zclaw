@@ -898,6 +898,13 @@ LAST_PORT=
         self.assertIn("Verifying OpenRouter API key", output)
         self.assertIn("Error: API check failed in --yes mode.", output)
 
+    def test_provision_gemini_api_check_runs_in_yes_mode(self) -> None:
+        proc = self._run_provision_api_check_fail("gemini")
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertNotEqual(proc.returncode, 0, msg=output)
+        self.assertIn("Verifying Gemini API key", output)
+        self.assertIn("Error: API check failed in --yes mode.", output)
+
     def test_provision_openai_api_check_uses_models_endpoint_for_chat_override(self) -> None:
         proc, called_url = self._run_provision_api_check_capture_url(
             backend="openai",
@@ -1001,7 +1008,7 @@ LAST_PORT=
         output = f"{proc.stdout}\n{proc.stderr}"
         self.assertEqual(proc.returncode, 0, msg=output)
         self.assertIn("Select model for openai:", output)
-        self.assertIn('llm_model,data,string,"gpt-5.4"', captured_csv)
+        self.assertIn('llm_model,data,string,"gpt-5.6-sol"', captured_csv)
 
     def test_provision_interactive_openai_model_menu_accepts_custom_model(self) -> None:
         proc, captured_csv = self._run_provision_capture_csv(
@@ -1095,7 +1102,7 @@ LAST_PORT=
             self.assertEqual(proc.returncode, 0, msg=output)
 
             captured_csv = (tmp / "captured-nvs.csv").read_text(encoding="utf-8")
-            self.assertIn('llm_model,data,string,"gpt-5.4"', captured_csv)
+            self.assertIn('llm_model,data,string,"gpt-5.6-sol"', captured_csv)
             self.assertIn('tg_chat_id,data,string,"7585013353"', captured_csv)
             self.assertIn('tg_chat_ids,data,string,"7585013353,-100222333444"', captured_csv)
 
@@ -1365,7 +1372,7 @@ LAST_PORT=
             self.assertTrue(env_file.exists(), msg=output)
             content = env_file.read_text(encoding="utf-8")
             self.assertIn("ZCLAW_WIFI_SSID", content)
-            self.assertIn("ZCLAW_MODEL=gpt-5.4", content)
+            self.assertIn("ZCLAW_MODEL=gpt-5.6-sol", content)
             self.assertIn("ZCLAW_API_KEY", content)
             self.assertIn("ZCLAW_API_URL", content)
 

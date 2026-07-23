@@ -38,7 +38,7 @@ Overrides:
   --port <serial-port>
   --ssid <wifi-ssid>
   --pass <wifi-pass>
-  --backend <provider>   anthropic | openai | openrouter | ollama
+  --backend <provider>   anthropic | openai | gemini | openrouter | ollama
   --model <model-id>
   --api-key <key>
   --api-url <url>          Custom API endpoint URL
@@ -66,7 +66,7 @@ ZCLAW_PORT=/dev/cu.usbmodem1101
 ZCLAW_WIFI_SSID=YourWifi
 ZCLAW_WIFI_PASS=YourWifiPassword
 ZCLAW_BACKEND=openai
-ZCLAW_MODEL=gpt-5.4
+ZCLAW_MODEL=gpt-5.6-sol
 ZCLAW_API_URL=
 
 # Prefer setting one API key here:
@@ -74,6 +74,7 @@ ZCLAW_API_KEY=
 # Or rely on provider env vars instead:
 # OPENAI_API_KEY=
 # ANTHROPIC_API_KEY=
+# GEMINI_API_KEY=
 # OPENROUTER_API_KEY=
 # OLLAMA_API_KEY=
 
@@ -179,6 +180,9 @@ resolve_api_key() {
             ;;
         anthropic)
             printf '%s\n' "${ANTHROPIC_API_KEY:-}"
+            ;;
+        gemini)
+            printf '%s\n' "${GEMINI_API_KEY:-}"
             ;;
         openrouter)
             printf '%s\n' "${OPENROUTER_API_KEY:-}"

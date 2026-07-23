@@ -83,6 +83,7 @@ Non-interactive install:
 - In non-interactive mode, unanswered install prompts default to `no` unless you pass `-y` (or saved preferences/explicit flags apply).
 - For encrypted credentials in flash, use secure mode (`--flash-mode secure` in install flow, or `./scripts/flash-secure.sh` directly).
 - After flashing, provision WiFi + LLM credentials with `./scripts/provision.sh`.
+- Hosted backends include OpenAI, Anthropic, Google Gemini, and OpenRouter; Ollama remains available for a network-reachable local endpoint. Gemini uses Google's OpenAI-compatible chat-completions endpoint so zclaw function tools work unchanged.
 - You can re-run either `./scripts/provision.sh` or `./scripts/provision-dev.sh` at any time (no reflash required) to update runtime credentials: WiFi SSID/password, LLM backend/model/API key (or Ollama API URL), and Telegram token/chat ID allowlist.
 - Default LLM rate limits are `100/hour` and `1000/day`; change compile-time limits in `main/config.h` (`RATELIMIT_*`).
 - Quick validation path: run `./scripts/web-relay.sh` and send a test message to confirm the device can answer.
