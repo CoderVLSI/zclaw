@@ -557,6 +557,7 @@ char *json_build_request(
     };
     tool_def_t compact_tools[sizeof(compact_tool_names) / sizeof(compact_tool_names[0])];
     int compact_count = 0;
+    bool use_compact_tools = false;
 
 #define BUILD_REQUEST(tool_list, tool_list_count, buffer_size) \
     (llm_is_openai_format() \
@@ -565,19 +566,29 @@ char *json_build_request(
          : build_anthropic_request(system_prompt, history, history_len, user_message, \
                                    tool_list, tool_list_count, buffer_size))
 
-    json_str = BUILD_REQUEST(tools, tool_count, LLM_REQUEST_BUF_SIZE);
-
-    if (!json_str && tools && tool_count > 0) {
-        for (int wanted = 0;
-             wanted < (int)(sizeof(compact_tool_names) / sizeof(compact_tool_names[0]));
-             wanted++) {
-            for (int i = 0; i < tool_count; i++) {
-                if (strcmp(tools[i].name, compact_tool_names[wanted]) == 0) {
-                    compact_tools[compact_count++] = tools[i];
-                    break;
-                }
+    for (int wanted = 0;
+         wanted < (int)(sizeof(compact_tool_names) / sizeof(compact_tool_names[0]));
+         wanted++) {
+        for (int i = 0; i < tool_count; i++) {
+            if (strcmp(tools[i].name, compact_tool_names[wanted]) == 0) {
+                compact_tools[compact_count++] = tools[i];
+                break;
             }
         }
+    }
+
+    // The original ESP32 has no PSRAM.  Constructing every tool schema first
+    // can momentarily leave less than 1 KB free and destabilize the following
+    // TLS request even when a compact request would fit.  Start compact there.
+#if defined(CONFIG_IDF_TARGET_ESP32)
+    use_compact_tools = true;
+#endif
+
+    json_str = use_compact_tools
+                   ? BUILD_REQUEST(compact_tools, compact_count, 8192)
+                   : BUILD_REQUEST(tools, tool_count, LLM_REQUEST_BUF_SIZE);
+
+    if (!json_str && !use_compact_tools && tools && tool_count > 0) {
         ESP_LOGW(TAG, "Full tool catalogue did not fit; retrying with %d compact tools",
                  compact_count);
         json_str = BUILD_REQUEST(compact_tools, compact_count, 8192);
