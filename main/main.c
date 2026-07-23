@@ -261,6 +261,13 @@ void app_main(void)
     channel_write("\r\nzclaw-shell ready. Normal text chats with the agent; !command runs the ESP terminal.\r\n"
                   "Try !help or /help.\r\n\r\nzclaw@esp32:~$ ");
 
+    // Clear the failure counter after a stable local-shell window even when
+    // the device is unprovisioned or recovering in safe mode. This lets a
+    // stable board recover on the next manual reboot without erasing NVS.
+    if (xTaskCreate(clear_boot_count, "boot_ok", BOOT_OK_TASK_STACK_SIZE, NULL, 1, NULL) != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create boot confirmation task");
+    }
+
     // 9. Check if configured or in safe mode
     if (!device_configured || s_safe_mode) {
         if (s_safe_mode) {
@@ -293,15 +300,10 @@ void app_main(void)
         esp_restart();
     }
 
-    // 11. Start task to clear boot counter after stable period
-    if (xTaskCreate(clear_boot_count, "boot_ok", BOOT_OK_TASK_STACK_SIZE, NULL, 1, NULL) != pdPASS) {
-        ESP_LOGE(TAG, "Failed to create boot confirmation task");
-    }
-
-    // 12. Initialize cron (includes NTP sync)
+    // 11. Initialize cron (includes NTP sync)
     ESP_ERROR_CHECK(cron_init());
 
-    // 13. Start Telegram channel
+    // 12. Start Telegram channel
     if (telegram_enabled) {
         startup_err = telegram_start(input_queue, telegram_output_queue);
         if (startup_err != ESP_OK) {

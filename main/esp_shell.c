@@ -324,8 +324,8 @@ static bool write_at(const char *cwd, const char *path, const char *content,
         snprintf(result, result_len, "write: %s: incomplete write", virt);
         return false;
     }
-    snprintf(result, result_len, "%s %zu bytes to %s",
-             append ? "Appended" : "Wrote", written, virt);
+    snprintf(result, result_len, "%s %u bytes to %s",
+             append ? "Appended" : "Wrote", (unsigned)written, virt);
     return true;
 }
 

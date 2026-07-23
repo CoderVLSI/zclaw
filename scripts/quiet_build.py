@@ -12,6 +12,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import time
@@ -49,6 +50,90 @@ def _discover_base_python() -> Path:
 
 
 BASE_PYTHON = _discover_base_python()
+
+
+def _ensure_idf_console_pythons(idf_sites: list[Path]) -> list[Path]:
+    """Replace broken venv redirectors with the matching console interpreter.
+
+    A venv created from KiCad's Python can incorrectly redirect ``python.exe``
+    to ``pythonw.exe``. Native ESP-IDF tools launched below that GUI process
+    then ask Windows Terminal for a new console. Keeping the original launcher
+    as a backup and installing the real console executable prevents that.
+    """
+    base_dlls = sorted(BASE_PYTHON.parent.glob("python3*.dll"))
+    if not base_dlls:
+        raise RuntimeError(f"Python runtime DLL is missing beside {BASE_PYTHON}")
+    repaired: list[Path] = []
+    for site_packages in idf_sites:
+        venv_dir = site_packages.parents[1]
+        scripts_dir = venv_dir / "Scripts"
+        target = scripts_dir / "python.exe"
+        backup = scripts_dir / "python-redirector.exe"
+        if not target.exists():
+            raise RuntimeError(f"ESP-IDF Python is missing: {target}")
+        if target.stat().st_size != BASE_PYTHON.stat().st_size:
+            if not backup.exists():
+                shutil.copy2(target, backup)
+            shutil.copy2(BASE_PYTHON, target)
+        for runtime_dll in base_dlls:
+            shutil.copy2(runtime_dll, scripts_dir / runtime_dll.name)
+        repaired.append(target)
+    return repaired
+
+
+def _ensure_python_path_bridge() -> Path:
+    """Let KiCad's Python honor a build-only package path environment variable.
+
+    KiCad's sitecustomize intentionally rebuilds sys.path and therefore removes
+    the standard PYTHONPATH entries.  A conditional .pth hook in KiCad's user
+    site keeps normal KiCad sessions unchanged while allowing this launcher to
+    expose PlatformIO and ESP-IDF packages to console-mode Python children.
+    """
+    result = subprocess.run(
+        [str(BASE_PYTHON), "-c", "import site; print(site.USER_SITE)"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        creationflags=NO_WINDOW_FLAGS,
+        startupinfo=_startup_info(),
+        check=False,
+    )
+    user_site = Path(result.stdout.strip())
+    if result.returncode != 0 or not user_site.is_absolute():
+        raise RuntimeError(
+            "Unable to locate the base Python user site: " + result.stdout.strip()
+        )
+    user_site.mkdir(parents=True, exist_ok=True)
+    bridge = user_site / "zclaw_platformio.pth"
+    contents = (
+        "import os,sys; sys.path[0:0] = filter(None, "
+        "os.environ.get('ZCLAW_BUILD_PYTHONPATH', '').split(os.pathsep))\n"
+    )
+    if not bridge.exists() or bridge.read_text(encoding="utf-8") != contents:
+        bridge.write_text(contents, encoding="utf-8")
+    return bridge
+
+
+def _write_headless_project_config(build_project_dir: Path) -> Path:
+    """Create an ignored PlatformIO config that bypasses venv redirector EXEs."""
+    source = build_project_dir / "platformio.ini"
+    destination = build_project_dir / ".pio" / "headless-platformio.ini"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    python_override = f'-DPYTHON="{BASE_PYTHON.as_posix()}"'
+    lines: list[str] = []
+    replaced = False
+    for line in source.read_text(encoding="utf-8").splitlines():
+        if line.strip().startswith("board_build.cmake_extra_args"):
+            key, separator, value = line.partition("=")
+            if separator:
+                line = f"{key}= {value.strip()} {python_override}"
+                replaced = True
+        lines.append(line)
+    if not replaced:
+        raise RuntimeError("platformio.ini is missing board_build.cmake_extra_args")
+    destination.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return destination
 
 
 def _write_state(*, reset: bool = False, **values: object) -> None:
@@ -117,9 +202,20 @@ def _worker(environment: str, build_project_dir: Path) -> int:
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     os.environ["VIRTUAL_ENV"] = str(WORKSPACE_DIR / ".venv_runtime")
     existing_pythonpath = os.environ.get("PYTHONPATH", "")
-    os.environ["PYTHONPATH"] = str(RUNTIME_SITE_PACKAGES) + (
-        os.pathsep + existing_pythonpath if existing_pythonpath else ""
+    idf_sites = sorted(
+        (Path.home() / ".platformio" / "penv").glob(".espidf-*/Lib/site-packages")
     )
+    repaired_idf_pythons = _ensure_idf_console_pythons(idf_sites)
+    os.environ["PATH"] = os.pathsep.join(
+        [str(BASE_PYTHON.parent), os.environ.get("PATH", "")]
+    )
+    python_paths = [str(RUNTIME_SITE_PACKAGES), *(str(path) for path in idf_sites)]
+    if existing_pythonpath:
+        python_paths.append(existing_pythonpath)
+    os.environ["PYTHONPATH"] = os.pathsep.join(python_paths)
+    os.environ["ZCLAW_BUILD_PYTHONPATH"] = os.pathsep.join(python_paths)
+    python_path_bridge = _ensure_python_path_bridge()
+    project_config = _write_headless_project_config(build_project_dir)
     command = [
         str(BASE_PYTHON),
         "-m",
@@ -127,6 +223,8 @@ def _worker(environment: str, build_project_dir: Path) -> int:
         "run",
         "--project-dir",
         str(build_project_dir),
+        "--project-conf",
+        str(project_config),
         "--environment",
         environment,
         "--jobs",
@@ -141,34 +239,16 @@ def _worker(environment: str, build_project_dir: Path) -> int:
         started_at=time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         command=command,
         log=str(LOG_FILE),
+        python_path_bridge=str(python_path_bridge),
+        repaired_idf_pythons=[str(path) for path in repaired_idf_pythons],
     )
     try:
-        command_file = STATE_DIR / "build-command.cmd"
-        control_log = STATE_DIR / "conpty-control.log"
-        LOG_FILE.write_text(
-            "Quiet local build: Windows ConPTY headless session.\n"
-            + "Command: "
-            + subprocess.list2cmdline(command)
-            + "\n\n",
-            encoding="utf-8",
-        )
-        command_file.write_text(
-            "@echo off\n"
-            + subprocess.list2cmdline(command)
-            + f' >> "{LOG_FILE}" 2>&1\n'
-            + "exit /b %errorlevel%\n",
-            encoding="utf-8",
-        )
-        console_command = [
-            os.environ.get("COMSPEC", r"C:\Windows\System32\cmd.exe"),
-            "/d",
-            "/c",
-            "call",
-            str(command_file),
-        ]
-        with control_log.open("wb") as log:
+        with LOG_FILE.open("wb") as log:
+            log.write(b"Quiet local build: Windows ConPTY headless session.\n")
+            log.write(("Command: " + subprocess.list2cmdline(command) + "\n\n").encode())
+            log.flush()
             exit_code = run_conpty(
-                console_command,
+                command,
                 build_project_dir,
                 log,
                 on_started=lambda pid: _write_state(status="running", child_pid=pid),
@@ -302,25 +382,8 @@ def _self_test() -> int:
     os.environ["PYTHONPATH"] = str(RUNTIME_SITE_PACKAGES) + (
         os.pathsep + existing_pythonpath if existing_pythonpath else ""
     )
-    test_command = STATE_DIR / "self-test-command.cmd"
-    control_log = STATE_DIR / "self-test-control.log"
-    child_command = [str(BASE_PYTHON), "-c", nested]
-    test_command.write_text(
-        "@echo off\n"
-        + subprocess.list2cmdline(child_command)
-        + f' > "{test_log}" 2>&1\n'
-        + "exit /b %errorlevel%\n",
-        encoding="utf-8",
-    )
-    console_command = [
-        os.environ.get("COMSPEC", r"C:\Windows\System32\cmd.exe"),
-        "/d",
-        "/c",
-        "call",
-        str(test_command),
-    ]
-    with control_log.open("wb") as log:
-        exit_code = run_conpty(console_command, PROJECT_DIR, log)
+    with test_log.open("wb") as log:
+        exit_code = run_conpty([str(BASE_PYTHON), "-c", nested], PROJECT_DIR, log)
     output = test_log.read_text(encoding="utf-8", errors="replace").strip()
     print(f"self-test exit={exit_code}; output={output!r}")
     return exit_code

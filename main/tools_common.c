@@ -15,7 +15,8 @@ bool tools_validate_string_input(const char *str, size_t max_len, char *error, s
 
     size_t len = strlen(str);
     if (len > max_len) {
-        snprintf(error, error_len, "Error: string too long (max %zu chars)", max_len);
+        snprintf(error, error_len, "Error: string too long (max %u chars)",
+                 (unsigned)max_len);
         return false;
     }
 

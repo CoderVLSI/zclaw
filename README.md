@@ -142,8 +142,8 @@ More details in the [Local Dev & Hacking guide](https://zclaw.dev/local-dev.html
 
 On Windows, native ESP-IDF compiler children can open a new Windows Terminal
 when their parent has no console. `scripts/quiet_build.py` runs the complete
-PlatformIO process tree inside a headless ConPTY session and redirects build
-output to `.local-build/build.log`.
+PlatformIO process tree inside a headless ConPTY session and records build
+state under `.local-build/`.
 
 The launcher expects a workspace virtual environment at
 `..\.venv_runtime` and defaults to a no-space build clone at
