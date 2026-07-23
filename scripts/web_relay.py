@@ -243,11 +243,16 @@ class SerialAgentBridge:
             ) from exc
 
         try:
-            self._serial = serial.Serial(
-                self.port,
-                self.baudrate,
-                timeout=self.serial_timeout_s,
-            )
+            serial_port = serial.Serial()
+            serial_port.port = self.port
+            serial_port.baudrate = self.baudrate
+            serial_port.timeout = self.serial_timeout_s
+            # Avoid toggling ESP32 auto-reset lines when a dashboard or relay
+            # opens the port for an ordinary command.
+            serial_port.dtr = False
+            serial_port.rts = False
+            serial_port.open()
+            self._serial = serial_port
         except Exception as exc:  # pragma: no cover - serial runtime dependent
             raise RuntimeError(f"Failed to open serial port {self.port}: {exc}") from exc
 

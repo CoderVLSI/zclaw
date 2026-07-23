@@ -166,6 +166,7 @@ different Git commit.
 - `./scripts/provision.sh` - Provision credentials to NVS
 - `./scripts/provision-dev.sh` - Local profile wrapper for repeat provisioning
 - `./scripts/telegram-clear-backlog.sh` - Clear queued Telegram updates
+- `scripts/start-dashboard.ps1` - Windows local setup, status, and chat dashboard
 - `./scripts/erase.sh` - Erase NVS only (`--nvs`) or full flash (`--all`) with guardrails
 - `./scripts/monitor.sh` - Serial monitor
 - `./scripts/emulate.sh` - Run QEMU profile
@@ -173,6 +174,21 @@ different Git commit.
 - `./scripts/benchmark.sh` - Benchmark relay/serial latency
 - `./scripts/test.sh` - Run host/device test flows
 - `./scripts/test-api.sh` - Run live provider API checks (manual/local)
+
+### Windows local control dashboard
+
+The dashboard combines USB provisioning and the serial chat relay without
+saving secrets. It binds only to `127.0.0.1`, writes Wi-Fi/LLM/Telegram values
+directly to the ESP32 NVS partition, and clears password fields after a
+successful write.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start-dashboard.ps1
+```
+
+Open `http://127.0.0.1:8790`, complete **Setup**, wait for the ESP32 to reboot,
+then use **Console** to run `/settings` and send a test message. Stop it later
+with `.\scripts\start-dashboard.ps1 -Stop`.
 
 </details>
 

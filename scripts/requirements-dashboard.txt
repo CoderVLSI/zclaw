@@ -1,0 +1,2 @@
+pyserial>=3.5,<4
+esp-idf-nvs-partition-gen==0.3.0
