@@ -21,9 +21,9 @@ static cJSON *s_parsed_response = NULL;
  * known request ceiling once, before printing, so normal agent requests have
  * a predictable single allocation.
  */
-static char *print_request_json(cJSON *root)
+static char *print_request_json(cJSON *root, size_t buffer_size)
 {
-    const size_t buffer_size = LLM_REQUEST_BUF_SIZE + 5; // cJSON safety margin
+    buffer_size += 5; // cJSON safety margin
     char *json_str = malloc(buffer_size);
     if (!json_str) {
         ESP_LOGE(TAG, "Failed to allocate %d-byte request buffer", (int)buffer_size);
@@ -31,7 +31,7 @@ static char *print_request_json(cJSON *root)
     }
 
     if (!cJSON_PrintPreallocated(root, json_str, (int)buffer_size, false)) {
-        ESP_LOGE(TAG, "LLM request exceeds %d bytes", LLM_REQUEST_BUF_SIZE);
+        ESP_LOGE(TAG, "LLM request exceeds %d bytes", (int)(buffer_size - 5));
         free(json_str);
         return NULL;
     }
@@ -75,7 +75,8 @@ static char *build_anthropic_request(
     int history_len,
     const char *user_message,
     const tool_def_t *tools,
-    int tool_count)
+    int tool_count,
+    size_t request_buffer_size)
 {
     cJSON *root = cJSON_CreateObject();
     if (!root) {
@@ -219,7 +220,7 @@ static char *build_anthropic_request(
         }
     }
 
-    char *json_str = print_request_json(root);
+    char *json_str = print_request_json(root, request_buffer_size);
     if (!json_str) {
         goto fail;
     }
@@ -291,7 +292,8 @@ static char *build_openai_request(
     int history_len,
     const char *user_message,
     const tool_def_t *tools,
-    int tool_count)
+    int tool_count,
+    size_t request_buffer_size)
 {
     cJSON *root = cJSON_CreateObject();
     if (!root) {
@@ -450,7 +452,7 @@ static char *build_openai_request(
         }
     }
 
-    char *json_str = print_request_json(root);
+    char *json_str = print_request_json(root, request_buffer_size);
     if (!json_str) {
         goto fail;
     }
@@ -544,14 +546,49 @@ char *json_build_request(
     int tool_count)
 {
     char *json_str;
+    // A classic ESP32 has limited contiguous heap after Wi-Fi, TLS, and the
+    // Telegram task are running.  Sending every schema (33+) may leave no
+    // room for cJSON to hold the request and its printable form at once.
+    // Keep the useful local-control tools available in a compact fallback.
+    static const char *const compact_tool_names[] = {
+        "gpio_write", "gpio_read", "gpio_read_all", "delay", "i2c_scan",
+        "shell_exec", "filesystem_list", "filesystem_read", "filesystem_write",
+        "get_diagnostics"
+    };
+    tool_def_t compact_tools[sizeof(compact_tool_names) / sizeof(compact_tool_names[0])];
+    int compact_count = 0;
 
-    if (llm_is_openai_format()) {
-        json_str = build_openai_request(system_prompt, history, history_len,
-                                         user_message, tools, tool_count);
-    } else {
-        json_str = build_anthropic_request(system_prompt, history, history_len,
-                                            user_message, tools, tool_count);
+#define BUILD_REQUEST(tool_list, tool_list_count, buffer_size) \
+    (llm_is_openai_format() \
+         ? build_openai_request(system_prompt, history, history_len, user_message, \
+                                tool_list, tool_list_count, buffer_size) \
+         : build_anthropic_request(system_prompt, history, history_len, user_message, \
+                                   tool_list, tool_list_count, buffer_size))
+
+    json_str = BUILD_REQUEST(tools, tool_count, LLM_REQUEST_BUF_SIZE);
+
+    if (!json_str && tools && tool_count > 0) {
+        for (int wanted = 0;
+             wanted < (int)(sizeof(compact_tool_names) / sizeof(compact_tool_names[0]));
+             wanted++) {
+            for (int i = 0; i < tool_count; i++) {
+                if (strcmp(tools[i].name, compact_tool_names[wanted]) == 0) {
+                    compact_tools[compact_count++] = tools[i];
+                    break;
+                }
+            }
+        }
+        ESP_LOGW(TAG, "Full tool catalogue did not fit; retrying with %d compact tools",
+                 compact_count);
+        json_str = BUILD_REQUEST(compact_tools, compact_count, 8192);
     }
+
+    if (!json_str) {
+        ESP_LOGW(TAG, "Tool schemas did not fit; retrying chat-only request");
+        json_str = BUILD_REQUEST(NULL, 0, 4096);
+    }
+
+#undef BUILD_REQUEST
 
     if (json_str) {
         ESP_LOGD(TAG, "Built request: %d bytes", (int)strlen(json_str));
