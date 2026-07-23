@@ -4,7 +4,7 @@
 // -----------------------------------------------------------------------------
 // Buffer Sizes
 // -----------------------------------------------------------------------------
-#define LLM_REQUEST_BUF_SIZE    12288   // 12KB for outgoing JSON
+#define LLM_REQUEST_BUF_SIZE    16384   // 16KB bounded outgoing JSON buffer
 #define LLM_RESPONSE_BUF_SIZE   16384   // 16KB for incoming JSON
 #define CHANNEL_RX_BUF_SIZE     512     // Input line buffer
 #define CHANNEL_TX_BUF_SIZE     1024    // Output response buffer for serial/web relay

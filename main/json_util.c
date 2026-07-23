@@ -14,6 +14,31 @@ static const char *TAG = "json";
 // Keep parsed response tree alive for tool_input access
 static cJSON *s_parsed_response = NULL;
 
+/*
+ * cJSON_PrintUnformatted grows its heap buffer geometrically.  On the
+ * classic ESP32, the full tool schema can fit in RAM while that final growth
+ * step still fails because the heap has become fragmented.  Allocate the
+ * known request ceiling once, before printing, so normal agent requests have
+ * a predictable single allocation.
+ */
+static char *print_request_json(cJSON *root)
+{
+    const size_t buffer_size = LLM_REQUEST_BUF_SIZE + 5; // cJSON safety margin
+    char *json_str = malloc(buffer_size);
+    if (!json_str) {
+        ESP_LOGE(TAG, "Failed to allocate %d-byte request buffer", (int)buffer_size);
+        return NULL;
+    }
+
+    if (!cJSON_PrintPreallocated(root, json_str, (int)buffer_size, false)) {
+        ESP_LOGE(TAG, "LLM request exceeds %d bytes", LLM_REQUEST_BUF_SIZE);
+        free(json_str);
+        return NULL;
+    }
+
+    return json_str;
+}
+
 static bool add_token_limit_field(cJSON *root)
 {
     const char *field = "max_tokens";
@@ -194,7 +219,7 @@ static char *build_anthropic_request(
         }
     }
 
-    char *json_str = cJSON_PrintUnformatted(root);
+    char *json_str = print_request_json(root);
     if (!json_str) {
         goto fail;
     }
@@ -425,7 +450,7 @@ static char *build_openai_request(
         }
     }
 
-    char *json_str = cJSON_PrintUnformatted(root);
+    char *json_str = print_request_json(root);
     if (!json_str) {
         goto fail;
     }
